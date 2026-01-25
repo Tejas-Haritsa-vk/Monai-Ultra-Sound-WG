@@ -126,5 +126,87 @@ df = pd.DataFrame([
 plot_radar_chart(df, save_path="radar_comparison.png")
 ```
 
+## Detailed Function Examples
+
+### 1. Metrics & Postprocessing
+```python
+import torch
+from monai_wg import MonaiMetricWrapper, get_standard_postprocessing
+
+# Setup postprocessing
+post_proc = get_standard_postprocessing(target_size=(256, 256))
+
+# Initialize metric wrapper
+metric_wrapper = MonaiMetricWrapper(num_classes=2)
+
+# Simulate data
+y_logits = torch.randn(4, 2, 256, 256)
+y_true = torch.randint(0, 2, (4, 1, 256, 256))
+
+# Process and Update
+y_pred = post_proc(y_logits)
+metric_wrapper.update(y_pred, y_true)
+
+# Get results
+df_results = metric_wrapper.get_results_df()
+print(df_results)
+```
+
+### 2. Basic Segmentation Overlays
+```python
+from monai_wg import plot_segmentation, plot_segmentation_error_heatmap, plot_boundary_comparison
+
+# Simple GT (Green) vs Pred (Red) overlay
+plot_segmentation(image, label, pred, title="Model Overlay")
+
+# Systematic error analysis (TP: Green, FP: Red, FN: Blue)
+plot_segmentation_error_heatmap(image, label, pred, class_index=1)
+
+# Boundary contour comparison
+plot_boundary_comparison(label, pred)
+```
+
+### 3. Dataset-wide Distributions
+```python
+from monai_wg import plot_metric_distribution, plot_metric_correlation, plot_dice_cdf
+
+# Violin plots for metric spread
+plot_metric_distribution(metrics_df, metric_names=['Dice', 'IoU', 'HD95'])
+
+# Correlation between metrics
+plot_metric_correlation(metrics_df, x_metric='Dice', y_metric='HD95')
+
+# Reliability profile (CDF)
+plot_dice_cdf(metrics_df, metric_name='Dice')
+```
+
+### 4. Model Benchmarking & Reports
+```python
+from monai_wg import plot_radar_chart, plot_model_comparison, plot_summary_report
+
+# Multi-metric profile (Spider chart)
+plot_radar_chart(comparison_df, metrics=['Dice', 'IoU', 'Precision', 'Recall'])
+
+# Grouped bar chart comparison
+plot_model_comparison(comparison_df, metrics=['Dice', 'HD95'])
+
+# Complete automated research report
+plot_summary_report(metrics_df, overlay_info={'image': img, 'label': gt, 'pred': seg})
+```
+
+### 5. Advanced Analysis
+```python
+from monai_wg import plot_pixel_confusion_matrix, plot_performance_vs_size, plot_training_history
+
+# Pixel-wise confusion matrix heatmap
+plot_pixel_confusion_matrix(y_true, y_pred)
+
+# Performance vs Object Size analysis
+plot_performance_vs_size(metrics_df)
+
+# Training vs Validation curves
+plot_training_history(history_df, metrics=['Loss', 'Dice'])
+```
+
 ---
-*Developed for the Monai Ultrasound Working Group. - Tejas Haritsa V K* 
+*Developed for the Monai Ultrasound Working Group. - Tejas Haritsa V K*

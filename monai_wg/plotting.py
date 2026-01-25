@@ -8,28 +8,45 @@ def plot_segmentation(image, label, pred, alpha=0.5, save_path=None, title="Segm
     """
     Overlays Ground Truth and Prediction on the original Image.
     Supports Multi-class (distinct colors) and Binary segmentation.
-    
+
     Args:
-        image (np.ndarray or torch.Tensor): (H, W) or (1, H, W)
-        label (np.ndarray or torch.Tensor): (H, W) or (C, H, W) - Ground Truth
-        pred (np.ndarray or torch.Tensor): (H, W) or (C, H, W) - Prediction
-        alpha (float): Transparency of the overlay.
-        save_path (str, optional): Path to save the figure.
-        title (str): Title of the plot.
+        image (np.ndarray | torch.Tensor): The background image. 
+            Expected shapes: (H, W), (1, H, W), (3, H, W), or (H, W, 3).
+        label (np.ndarray | torch.Tensor): Ground truth mask. 
+            Expected shapes: (H, W), (1, H, W), or (C, H, W).
+        pred (np.ndarray | torch.Tensor): Predicted mask. 
+            Expected shapes: (H, W), (1, H, W), or (C, H, W).
+        alpha (float, optional): Transparency of the overlay. Defaults to 0.5.
+        save_path (str, optional): Path to save the figure if provided.
+        title (str, optional): Title of the plot. Defaults to "Segmentation Overlay".
     """
     # Convert to numpy
     if isinstance(image, torch.Tensor): image = image.detach().cpu().numpy()
     if isinstance(label, torch.Tensor): label = label.detach().cpu().numpy()
     if isinstance(pred, torch.Tensor): pred = pred.detach().cpu().numpy()
-    
-    image = np.squeeze(image)
-    
-    # Handle One-hot (C, H, W) -> (H, W)
-    if label.ndim == 3: label = np.argmax(label, axis=0)
-    if pred.ndim == 3: pred = np.argmax(pred, axis=0)
-    
-    label = np.squeeze(label)
-    pred = np.squeeze(pred)
+
+    # Handle various image shapes (C, H, W) or (H, W, C)
+    if image.ndim == 3:
+        if image.shape[0] in [1, 3]: # (1, H, W) or (3, H, W)
+            image = np.transpose(image, (1, 2, 0))
+        if image.shape[-1] == 1: # (H, W, 1)
+            image = np.squeeze(image, axis=-1)
+
+    # Handle masks: (C, H, W) -> (H, W)
+    if label.ndim == 3:
+        if label.shape[0] == 1: # (1, H, W)
+            label = np.squeeze(label, axis=0)
+        else: # One-hot (C, H, W)
+            label = np.argmax(label, axis=0)
+
+    if pred.ndim == 3:
+        if pred.shape[0] == 1: # (1, H, W)
+            pred = np.squeeze(pred, axis=0)
+        else: # One-hot (C, H, W)
+            pred = np.argmax(pred, axis=0)
+
+    label = (np.squeeze(label) > 0.5).astype(np.uint8) if label.max() <= 1 else np.squeeze(label)
+    pred = (np.squeeze(pred) > 0.5).astype(np.uint8) if pred.max() <= 1 else np.squeeze(pred)
     
     num_labels = int(max(label.max(), pred.max()))
     
@@ -79,11 +96,12 @@ def plot_segmentation(image, label, pred, alpha=0.5, save_path=None, title="Segm
 def plot_metric_distribution(metrics_df, metric_names=['Dice', 'IoU'], save_path=None):
     """
     Plots the distribution of metrics using Violin plots.
-    
+
     Args:
         metrics_df (pd.DataFrame): DataFrame containing metric results for multiple samples.
-        metric_names (list): List of column names to plot.
-        save_path (str, optional): Path to save the figure.
+            Expects columns matching names in `metric_names`.
+        metric_names (list[str], optional): List of column names to plot. Defaults to ['Dice', 'IoU'].
+        save_path (str, optional): Path to save the figure if provided.
     """
     plt.figure(figsize=(12, 6))
     melted_df = metrics_df.melt(value_vars=metric_names, var_name='Metric', value_name='Score')
@@ -121,12 +139,12 @@ def plot_metric_correlation(metrics_df, x_metric='Dice', y_metric='HD95', save_p
 def plot_model_comparison(comparison_df, metrics=['Dice', 'IoU'], save_path=None):
     """
     Compares multiple models across several metrics using a Grouped Bar chart.
-    
+
     Args:
         comparison_df (pd.DataFrame): DataFrame with columns ['Model', 'Metric', 'Score'].
-                                      Or a wide format where index/column is 'Model'.
-        metrics (list): Metrics to include in the comparison.
-        save_path (str, optional): Path to save the figure.
+            Or a wide format where 'Model' is a column or index.
+        metrics (list[str], optional): Metrics to include in the comparison. Defaults to ['Dice', 'IoU'].
+        save_path (str, optional): Path to save the figure if provided.
     """
     # If comparison_df is not in long format, melt it
     if 'Metric' not in comparison_df.columns:
@@ -150,11 +168,13 @@ def plot_model_comparison(comparison_df, metrics=['Dice', 'IoU'], save_path=None
 def plot_summary_report(metrics_df, overlay_info=None, save_path=None):
     """
     Creates a summary grid visualization.
-    
+
     Args:
-        metrics_df (pd.DataFrame): DataFrame containing metrics.
+        metrics_df (pd.DataFrame): DataFrame containing metrics (Dice, IoU, HD95, etc.).
         overlay_info (dict, optional): Keys ['image', 'label', 'pred'] for an example overlay.
-        save_path (str, optional): Path to save the report.
+            - image: (H, W), (1, H, W), (3, H, W), or (H, W, 3)
+            - label/pred: (H, W) or (1, H, W) binary masks.
+        save_path (str, optional): Path to save the report if provided.
     """
     fig = plt.figure(figsize=(16, 10))
     gs = plt.GridSpec(2, 2, figure=fig)
@@ -188,14 +208,22 @@ def plot_summary_report(metrics_df, overlay_info=None, save_path=None):
         img = np.squeeze(overlay_info['image'])
         lbl = np.squeeze(overlay_info['label'])
         prd = np.squeeze(overlay_info['pred'])
-        ax4.imshow(img, cmap='gray')
-        
+
+        # Handle image shapes
+        if img.ndim == 3:
+            if img.shape[0] in [1, 3]:  # (1, H, W) or (3, H, W)
+                img = np.transpose(img, (1, 2, 0))
+            if img.shape[-1] == 1:  # (H, W, 1)
+                img = np.squeeze(img, axis=-1)
+
+        ax4.imshow(img, cmap='gray' if img.ndim == 2 else None)
+
         gt_mask = np.zeros((*lbl.shape, 4))
-        gt_mask[lbl > 0] = [0, 1, 0, 0.4]
+        gt_mask[lbl > 0.5] = [0, 1, 0, 0.4]
         ax4.imshow(gt_mask)
-        
+
         pred_mask = np.zeros((*prd.shape, 4))
-        pred_mask[prd > 0] = [1, 0, 0, 0.4]
+        pred_mask[prd > 0.5] = [1, 0, 0, 0.4]
         ax4.imshow(pred_mask)
         ax4.set_title("Example Segmentation Overlay")
         ax4.axis('off')
@@ -214,6 +242,11 @@ def plot_radar_chart(comparison_df, metrics=['Dice', 'IoU', 'Precision', 'Recall
     """
     Plots a Radar (Spider) chart comparing models across multiple metrics.
     Very common in SOTA papers to show balanced performance.
+
+    Args:
+        comparison_df (pd.DataFrame): DataFrame where 'Model' is a column or index.
+        metrics (list[str], optional): Metrics to plot. Defaults to ['Dice', 'IoU', 'Precision', 'Recall'].
+        save_path (str, optional): Path to save the figure if provided.
     """
     from math import pi
     
@@ -256,6 +289,11 @@ def plot_dice_cdf(metrics_df, metric_name='Dice', save_path=None):
     """
     Plots the Cumulative Distribution Function (CDF) of a metric (e.g. Dice).
     Commonly used to show the percentage of cases above a certain threshold.
+
+    Args:
+        metrics_df (pd.DataFrame): DataFrame containing metric results.
+        metric_name (str, optional): Metric name to plot. Defaults to 'Dice'.
+        save_path (str, optional): Path to save the figure if provided.
     """
     plt.figure(figsize=(8, 6))
     sns.ecdfplot(data=metrics_df, x=metric_name)
@@ -275,6 +313,12 @@ def plot_dice_cdf(metrics_df, metric_name='Dice', save_path=None):
 def plot_pixel_confusion_matrix(y_true, y_pred, labels=[0, 1], save_path=None):
     """
     Plots a pixel-wise confusion matrix for a single sample.
+
+    Args:
+        y_true (np.ndarray | torch.Tensor): Ground truth labels. Expected shape (H, W).
+        y_pred (np.ndarray | torch.Tensor): Predicted labels. Expected shape (H, W).
+        labels (list[int], optional): Class labels. Defaults to [0, 1].
+        save_path (str, optional): Path to save the figure if provided.
     """
     from sklearn.metrics import confusion_matrix
     
@@ -302,47 +346,58 @@ def plot_pixel_confusion_matrix(y_true, y_pred, labels=[0, 1], save_path=None):
 def plot_segmentation_error_heatmap(image, label, pred, class_index=1, save_path=None):
     """
     Visualizes True Positives (TP), False Positives (FP), and False Negatives (FN) for a specific class.
-    
+
     Args:
-        image (np.ndarray or torch.Tensor): (H, W)
-        label (np.ndarray or torch.Tensor): (H, W) or (C, H, W)
-        pred (np.ndarray or torch.Tensor): (H, W) or (C, H, W)
-        class_index (int): The class to analyze for errors.
-        save_path (str, optional): Path to save the figure.
+        image (np.ndarray | torch.Tensor): Background image. 
+            Expected shapes: (H, W), (1, H, W), (3, H, W), or (H, W, 3).
+        label (np.ndarray | torch.Tensor): Ground truth mask. 
+            Expected shapes: (H, W), (1, H, W), or (C, H, W).
+        pred (np.ndarray | torch.Tensor): Predicted mask. 
+            Expected shapes: (H, W), (1, H, W), or (C, H, W).
+        class_index (int, optional): The class to analyze for errors. Defaults to 1.
+            If masks are single-channel, this is ignored and binary classification is assumed.
+        save_path (str, optional): Path to save the figure if provided.
     """
     if isinstance(image, torch.Tensor): image = image.detach().cpu().numpy()
     if isinstance(label, torch.Tensor): label = label.detach().cpu().numpy()
     if isinstance(pred, torch.Tensor): pred = pred.detach().cpu().numpy()
+
+    # Handle image shapes
+    if image.ndim == 3:
+        if image.shape[0] in [1, 3]:  # (1, H, W) or (3, H, W)
+            image = np.transpose(image, (1, 2, 0))
+        if image.shape[-1] == 1:  # (H, W, 1)
+            image = np.squeeze(image, axis=-1)
+
+    # Handle mask shapes/channels
+    def get_binary_mask(m, idx):
+        m = np.squeeze(m)
+        if m.ndim == 3:  # One-hot (C, H, W)
+            # Clip index to avoid out of bounds if C=1 and idx=1
+            idx = min(idx, m.shape[0] - 1)
+            return m[idx] > 0.5
+        # Single channel or already squeezed
+        return m == idx if m.max() > 1 else m > 0.5
+
+    label_bin = get_binary_mask(label, class_index)
+    pred_bin = get_binary_mask(pred, class_index)
     
-    image = np.squeeze(image)
-    
-    # Handle One-hot or multi-class indices
-    if label.ndim == 3: # One-hot
-        label = label[class_index] > 0.5
-    else: # Indices
-        label = label == class_index
-        
-    if pred.ndim == 3:
-        pred = pred[class_index] > 0.5
-    else:
-        pred = pred == class_index
-    
-    label = np.squeeze(label)
-    pred = np.squeeze(pred)
-    
-    tp = np.logical_and(label, pred)
-    fp = np.logical_and(np.logical_not(label), pred)
-    fn = np.logical_and(label, np.logical_not(pred))
-    
-    # Create an RGB image where image is background
+    tp = np.logical_and(label_bin, pred_bin)
+    fp = np.logical_and(np.logical_not(label_bin), pred_bin)
+    fn = np.logical_and(label_bin, np.logical_not(pred_bin))
+
+    # Normalize image
     img_norm = (image - image.min()) / (image.max() - image.min() + 1e-8)
-    overlay = np.stack([img_norm]*3, axis=-1)
-    
+    if img_norm.ndim == 2:
+        overlay = np.stack([img_norm]*3, axis=-1)
+    else:
+        overlay = img_norm.copy()
+
     # TP: Green, FP: Red, FN: Blue
     overlay[tp] = [0, 0.8, 0]
     overlay[fp] = [0.8, 0, 0]
     overlay[fn] = [0, 0, 0.8]
-    
+
     plt.figure(figsize=(10, 10))
     plt.imshow(overlay)
     plt.title(f"Error Analysis (Class {class_index}): TP (Green), FP (Red), FN (Blue)")
@@ -363,6 +418,11 @@ def plot_segmentation_error_heatmap(image, label, pred, class_index=1, save_path
 def plot_boundary_comparison(label, pred, save_path=None):
     """
     Visualizes the boundaries of Ground Truth vs Prediction.
+
+    Args:
+        label (np.ndarray | torch.Tensor): Ground truth mask. Expected shape (H, W) or (1, H, W).
+        pred (np.ndarray | torch.Tensor): Predicted mask. Expected shape (H, W) or (1, H, W).
+        save_path (str, optional): Path to save the figure if provided.
     """
     from scipy.ndimage import binary_dilation
     
@@ -393,6 +453,10 @@ def plot_boundary_comparison(label, pred, save_path=None):
 def plot_performance_vs_size(metrics_df, save_path=None):
     """
     Plots IoU as a function of object size (pixel count).
+
+    Args:
+        metrics_df (pd.DataFrame): DataFrame containing 'Size' and 'IoU' columns.
+        save_path (str, optional): Path to save the figure if provided.
     """
     plt.figure(figsize=(8, 6))
     if 'Size' not in metrics_df.columns:
@@ -413,6 +477,11 @@ def plot_performance_vs_size(metrics_df, save_path=None):
 def plot_training_history(history_df, metrics=['Loss', 'Dice'], save_path=None):
     """
     Plots Training vs Validation curves (Loss, Dice, etc.).
+
+    Args:
+        history_df (pd.DataFrame): DataFrame with columns like 'train_Loss', 'val_Loss', etc.
+        metrics (list[str], optional): Metrics to include. Defaults to ['Loss', 'Dice'].
+        save_path (str, optional): Path to save the figure if provided.
     """
     n_metrics = len(metrics)
     fig, axes = plt.subplots(1, n_metrics, figsize=(6 * n_metrics, 5))
