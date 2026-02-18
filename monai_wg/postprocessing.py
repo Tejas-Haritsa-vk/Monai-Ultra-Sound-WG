@@ -56,6 +56,9 @@ class PostProcessingPipeline:
         self.transforms = Compose(transforms_list)
         
     def __call__(self, pred):
+        if torch.is_tensor(pred) and pred.dim() == 4:
+            # Batched input (B, C, H, W) -> process each sample
+            return torch.stack([self.transforms(p) for p in pred])
         return self.transforms(pred)
 
 def get_standard_postprocessing(target_size=(256, 256), cleanup_labels=None):

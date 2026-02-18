@@ -115,14 +115,14 @@ class MonaiMetricWrapper:
                     if torch.isfinite(v).all():
                         results.append(v.item())
                     else:
-                        warnings.warn(f"Non-finite value detected in {name}")
+                        warnings.warn(f"Non-finite value detected in {name}", stacklevel=2)
                         results.append(0.0)
                 return results
             
             if torch.isfinite(val).all():
                 return val.item()
             else:
-                warnings.warn(f"Non-finite value detected in {name}")
+                warnings.warn(f"Non-finite value detected in {name}", stacklevel=2)
                 return 0.0
 
         metrics = {

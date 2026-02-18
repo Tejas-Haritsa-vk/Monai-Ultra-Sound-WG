@@ -156,6 +156,8 @@ def plot_model_comparison(comparison_df, metrics=None, save_path=None):
         melt_vars = [m for m in metrics if m in comparison_df.columns]
         id_vars = ['Model'] if 'Model' in comparison_df.columns else []
         comparison_df = comparison_df.melt(id_vars=id_vars, value_vars=melt_vars, var_name='Metric', value_name='Score')
+        if 'Model' not in comparison_df.columns:
+            comparison_df['Model'] = 'Model'
 
     plt.figure(figsize=(12, 6))
     sns.barplot(data=comparison_df, x='Metric', y='Score', hue='Model', palette='viridis')
@@ -209,9 +211,17 @@ def plot_summary_report(metrics_df, overlay_info=None, save_path=None):
     # 4. Example Overlay (if provided)
     ax4 = fig.add_subplot(gs[1, 1])
     if overlay_info:
-        img = np.squeeze(overlay_info['image'])
-        lbl = np.squeeze(overlay_info['label'])
-        prd = np.squeeze(overlay_info['pred'])
+        img = overlay_info['image']
+        lbl = overlay_info['label']
+        prd = overlay_info['pred']
+        
+        if isinstance(img, torch.Tensor): img = img.detach().cpu().numpy()
+        if isinstance(lbl, torch.Tensor): lbl = lbl.detach().cpu().numpy()
+        if isinstance(prd, torch.Tensor): prd = prd.detach().cpu().numpy()
+
+        img = np.squeeze(img)
+        lbl = np.squeeze(lbl)
+        prd = np.squeeze(prd)
 
         # Handle image shapes
         if img.ndim == 3:
@@ -329,7 +339,9 @@ def plot_pixel_confusion_matrix(y_true, y_pred, labels=None, save_path=None):
     if labels is None:
         labels = [0, 1]
     from sklearn.metrics import confusion_matrix
-    
+    if isinstance(y_true, torch.Tensor): y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor): y_pred = y_pred.detach().cpu().numpy()
+
     y_true_flat = np.squeeze(y_true).flatten()
     y_pred_flat = np.squeeze(y_pred).flatten()
     
@@ -442,6 +454,9 @@ def plot_boundary_comparison(label, pred, save_path=None):
     def get_boundary(mask):
         dilated = binary_dilation(mask)
         return np.logical_and(dilated, np.logical_not(mask))
+
+    if isinstance(label, torch.Tensor): label = label.detach().cpu().numpy()
+    if isinstance(pred, torch.Tensor): pred = pred.detach().cpu().numpy()
 
     label = np.squeeze(label) > 0.5
     pred = np.squeeze(pred) > 0.5
