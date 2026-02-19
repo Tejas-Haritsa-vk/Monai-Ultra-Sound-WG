@@ -12,6 +12,7 @@ class PostProcessingPipeline:
     def __init__(
         self,
         target_spatial_size=(256, 256),
+        resize_mode="bilinear",
         activation=None,
         discretization="threshold",
         discretization_threshold=0.5,
@@ -23,6 +24,7 @@ class PostProcessingPipeline:
         
         Args:
             target_spatial_size (tuple): Target spatial dimensions (H, W).
+            resize_mode (str): Interpolation mode for Resize ('bilinear', 'nearest', etc.).
             activation (str, optional): 'sigmoid', 'softmax', or None.
             discretization (str, optional): 'threshold', 'argmax', or None.
             discretization_threshold (float): Threshold value if discretization is 'threshold'.
@@ -31,9 +33,10 @@ class PostProcessingPipeline:
         """
         transforms_list = [EnsureType()]
         
-        # 0. Resizing (Optional but usually needed for standardized metrics)
+        # 0. Resizing
         if target_spatial_size:
-            transforms_list.append(Resize(spatial_size=target_spatial_size, mode="nearest"))
+            # Use continuous interpolation by default for logits/probs
+            transforms_list.append(Resize(spatial_size=target_spatial_size, mode=resize_mode))
 
         # 1. Activation
         if activation == "sigmoid":
@@ -56,7 +59,9 @@ class PostProcessingPipeline:
         self.transforms = Compose(transforms_list)
         
     def __call__(self, pred):
-        if torch.is_tensor(pred) and pred.dim() == 4:
+        if not torch.is_tensor(pred):
+            pred = torch.as_tensor(pred)
+        if pred.dim() == 4:
             # Batched input (B, C, H, W) -> process each sample
             return torch.stack([self.transforms(p) for p in pred])
         return self.transforms(pred)

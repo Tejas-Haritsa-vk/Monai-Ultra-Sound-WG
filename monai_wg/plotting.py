@@ -21,9 +21,12 @@ def plot_segmentation(image, label, pred, alpha=0.5, save_path=None, title="Segm
         title (str, optional): Title of the plot. Defaults to "Segmentation Overlay".
     """
     # Convert to numpy
-    if isinstance(image, torch.Tensor): image = image.detach().cpu().numpy()
-    if isinstance(label, torch.Tensor): label = label.detach().cpu().numpy()
-    if isinstance(pred, torch.Tensor): pred = pred.detach().cpu().numpy()
+    if isinstance(image, torch.Tensor):
+        image = image.detach().cpu().numpy()
+    if isinstance(label, torch.Tensor):
+        label = label.detach().cpu().numpy()
+    if isinstance(pred, torch.Tensor):
+        pred = pred.detach().cpu().numpy()
 
     # Handle various image shapes (C, H, W) or (H, W, C)
     if image.ndim == 3:
@@ -157,7 +160,11 @@ def plot_model_comparison(comparison_df, metrics=None, save_path=None):
         id_vars = ['Model'] if 'Model' in comparison_df.columns else []
         comparison_df = comparison_df.melt(id_vars=id_vars, value_vars=melt_vars, var_name='Metric', value_name='Score')
         if 'Model' not in comparison_df.columns:
-            comparison_df['Model'] = 'Model'
+            # Use index or a sequence if index is just generic
+            if comparison_df.index.is_unique:
+                comparison_df['Model'] = comparison_df.index.astype(str)
+            else:
+                comparison_df['Model'] = [f"Model_{i}" for i in range(len(comparison_df))]
 
     plt.figure(figsize=(12, 6))
     sns.barplot(data=comparison_df, x='Metric', y='Score', hue='Model', palette='viridis')
@@ -215,9 +222,12 @@ def plot_summary_report(metrics_df, overlay_info=None, save_path=None):
         lbl = overlay_info['label']
         prd = overlay_info['pred']
         
-        if isinstance(img, torch.Tensor): img = img.detach().cpu().numpy()
-        if isinstance(lbl, torch.Tensor): lbl = lbl.detach().cpu().numpy()
-        if isinstance(prd, torch.Tensor): prd = prd.detach().cpu().numpy()
+        if isinstance(img, torch.Tensor):
+            img = img.detach().cpu().numpy()
+        if isinstance(lbl, torch.Tensor):
+            lbl = lbl.detach().cpu().numpy()
+        if isinstance(prd, torch.Tensor):
+            prd = prd.detach().cpu().numpy()
 
         img = np.squeeze(img)
         lbl = np.squeeze(lbl)
@@ -276,7 +286,7 @@ def plot_radar_chart(comparison_df, metrics=None, save_path=None):
     angles = [n / float(N) * 2 * pi for n in range(N)]
     angles += angles[:1]
     
-    fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
+    _fig, ax = plt.subplots(figsize=(8, 8), subplot_kw=dict(polar=True))
     
     for model_name, row in comparison_df.iterrows():
         values = row[metrics].values.flatten().tolist()
@@ -339,8 +349,10 @@ def plot_pixel_confusion_matrix(y_true, y_pred, labels=None, save_path=None):
     if labels is None:
         labels = [0, 1]
     from sklearn.metrics import confusion_matrix
-    if isinstance(y_true, torch.Tensor): y_true = y_true.detach().cpu().numpy()
-    if isinstance(y_pred, torch.Tensor): y_pred = y_pred.detach().cpu().numpy()
+    if isinstance(y_true, torch.Tensor):
+        y_true = y_true.detach().cpu().numpy()
+    if isinstance(y_pred, torch.Tensor):
+        y_pred = y_pred.detach().cpu().numpy()
 
     y_true_flat = np.squeeze(y_true).flatten()
     y_pred_flat = np.squeeze(y_pred).flatten()
@@ -375,8 +387,18 @@ def _get_binary_mask(m, idx):
         if idx < 0 or idx >= m.shape[0]:
             raise ValueError(f"_get_binary_mask: class_index {idx} is out of bounds for tensor with {m.shape[0]} channels.")
         return m[idx] > 0.5
-    # Single channel or already squeezed
-    return m == idx if m.max() > 1 else m > 0.5
+    
+    # Binary / Mask (max <= 1)
+    if m.max() <= 1:
+        if idx == 0:
+            return m <= 0.5
+        elif idx == 1:
+            return m > 0.5
+        else:
+            raise ValueError(f"_get_binary_mask: for binary masks, idx must be 0 or 1, got {idx}")
+            
+    # Single channel indices (max > 1)
+    return m == idx
 
 def plot_segmentation_error_heatmap(image, label, pred, class_index=1, save_path=None):
     """
@@ -393,9 +415,12 @@ def plot_segmentation_error_heatmap(image, label, pred, class_index=1, save_path
             If masks are single-channel, this is ignored and binary classification is assumed.
         save_path (str, optional): Path to save the figure if provided.
     """
-    if isinstance(image, torch.Tensor): image = image.detach().cpu().numpy()
-    if isinstance(label, torch.Tensor): label = label.detach().cpu().numpy()
-    if isinstance(pred, torch.Tensor): pred = pred.detach().cpu().numpy()
+    if isinstance(image, torch.Tensor):
+        image = image.detach().cpu().numpy()
+    if isinstance(label, torch.Tensor):
+        label = label.detach().cpu().numpy()
+    if isinstance(pred, torch.Tensor):
+        pred = pred.detach().cpu().numpy()
 
     # Handle image shapes
     if image.ndim == 3:
@@ -455,8 +480,10 @@ def plot_boundary_comparison(label, pred, save_path=None):
         dilated = binary_dilation(mask)
         return np.logical_and(dilated, np.logical_not(mask))
 
-    if isinstance(label, torch.Tensor): label = label.detach().cpu().numpy()
-    if isinstance(pred, torch.Tensor): pred = pred.detach().cpu().numpy()
+    if isinstance(label, torch.Tensor):
+        label = label.detach().cpu().numpy()
+    if isinstance(pred, torch.Tensor):
+        pred = pred.detach().cpu().numpy()
 
     label = np.squeeze(label) > 0.5
     pred = np.squeeze(pred) > 0.5
@@ -515,8 +542,9 @@ def plot_training_history(history_df, metrics=None, save_path=None):
     if metrics is None:
         metrics = ['Loss', 'Dice']
     n_metrics = len(metrics)
-    fig, axes = plt.subplots(1, n_metrics, figsize=(6 * n_metrics, 5))
-    if n_metrics == 1: axes = [axes]
+    _fig, axes = plt.subplots(1, n_metrics, figsize=(6 * n_metrics, 5))
+    if n_metrics == 1:
+        axes = [axes]
     
     for i, metric in enumerate(metrics):
         if f'train_{metric}' in history_df.columns:

@@ -7,6 +7,7 @@ from monai.metrics import (
     ConfusionMatrixMetric,
 )
 from monai.utils import MetricReduction
+from monai.networks.utils import one_hot
 import pandas as pd
 import numpy as np
 
@@ -61,8 +62,7 @@ class MonaiMetricWrapper:
              
         if tensor.shape[1] == 1 and num_classes > 1:
             # Assuming tensor contains class indices or binary mask
-            from monai.networks.utils import one_hot
-            tensor = one_hot(tensor, num_classes=num_classes)
+            tensor = one_hot(tensor.long(), num_classes=num_classes)
             
         return tensor
 
@@ -77,18 +77,28 @@ class MonaiMetricWrapper:
             discretize (bool): If True, discretizes y_pred (argmax/threshold) before computing metrics.
                                MONAI metrics usually handle this if setup, but ensuring consistency here.
         """
-        y_pred = self._ensure_one_hot(y_pred, self.num_classes)
-        y = self._ensure_one_hot(y, self.num_classes)
-        
+        if isinstance(y_pred, np.ndarray):
+            y_pred = torch.from_numpy(y_pred)
+            
+        # Normalize dims before discretizing
+        if y_pred.dim() == 3:
+            if y_pred.shape[0] == self.num_classes and self.num_classes > 1:
+                y_pred = y_pred.unsqueeze(0)
+            else:
+                y_pred = y_pred.unsqueeze(1)
+                
         if discretize:
             if self.num_classes == 2:
-                # Binary: Simple threshold
+                # Binary: Simple threshold on (B, 1, H, W) probs
                 y_pred = (y_pred >= 0.5).float()
             else:
                 # Multi-class: Argmax over channel dimension and convert back to one-hot
                 class_indices = torch.argmax(y_pred, dim=1, keepdim=True)
-                from monai.networks.utils import one_hot
                 y_pred = one_hot(class_indices, num_classes=self.num_classes)
+        
+        # Ensure final one-hot format for metrics
+        y_pred = self._ensure_one_hot(y_pred, self.num_classes)
+        y = self._ensure_one_hot(y, self.num_classes)
 
         # Update metrics
         self.dice_metric(y_pred=y_pred, y=y)
@@ -116,14 +126,15 @@ class MonaiMetricWrapper:
                         results.append(v.item())
                     else:
                         warnings.warn(f"Non-finite value detected in {name}", stacklevel=2)
-                        results.append(0.0)
+                        fallback = float('inf') if name in ["HD95", "ASD"] else 0.0
+                        results.append(fallback)
                 return results
             
             if torch.isfinite(val).all():
                 return val.item()
             else:
                 warnings.warn(f"Non-finite value detected in {name}", stacklevel=2)
-                return 0.0
+                return float('inf') if name in ["HD95", "ASD"] else 0.0
 
         metrics = {
             "Dice": safe_item(self.dice_metric, "Dice"),
