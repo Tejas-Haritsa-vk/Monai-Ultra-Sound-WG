@@ -1,0 +1,25 @@
+# Configuration for SAM3 Benchmarking on US30K
+
+paths:
+  dataset_root: "D:\\US30K"
+  # List of subfolders to include in benchmark
+  subfolders:
+    - "Breast-BUSI"
+    - "ThyroidNodule-TG3K"
+  weights_dir: "f:\\AI_ML_Notebooks\\Monai-Ultra-Sound-WG\\sam3\\checkpoints"
+  output_dir: "f:\\AI_ML_Notebooks\\Monai-Ultra-Sound-WG\\results"
+
+auth:
+  hf_token_name: "sam3"  # Reference to the configured Hugging Face token
+
+benchmark:
+  # 'automatic' (AMG), 'text_prompt' (TG), or 'point_prompt'
+  track_mode: "point_prompt" 
+  text_prompt: "ultrasound lesion"
+  num_images_per_folder: 10
+  save_plots: true
+
+model:
+  sam3_model_id: "facebook/sam3"
+  device: "cuda"  # "cuda", "cpu", or "mps"
+  confidence_threshold: 0.5
